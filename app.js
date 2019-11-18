@@ -24,6 +24,7 @@ class ServerApp {
   }
 
   _pipeCommand(command, res) {
+    console.log(command)
     exec(command).stdout.pipe(res)
   }
 
