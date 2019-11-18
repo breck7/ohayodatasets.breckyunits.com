@@ -11,7 +11,7 @@ class ServerApp {
     this._hostname = hostname
     this._protocol = protocol
     this._files = new Set("baby-names.csv gutenberg.tsv".split(" "))
-    this._commands = new Set("headers".split(" "))
+    this._commands = new Set("headers frequency count stats".split(" "))
   }
 
   getCwd() {
@@ -23,15 +23,34 @@ class ServerApp {
     return this._app
   }
 
-  _handleXsvRequest(req, res) {
-    console.log("handling")
-    const userCommand = req.query.command
+  _pipeCommand(command, res) {
+    exec(command).stdout.pipe(res)
+  }
+
+  _checkAndGetFileName(req, res) {
     const userFile = req.query.file
-    if (!this._commands.has(userCommand)) return res.status(400).send(`${userCommand} not found.`)
-    if (!this._files.has(userFile)) return res.status(400).send(`${userFile} not found.`)
-    const command = `xsv ${userCommand} ${userFile}`
-    const child = exec(command)
-    child.stdout.pipe(res)
+    if (!this._files.has(userFile)) {
+      const msg = `${userFile} not found.`
+      res.status(400).send(msg)
+      throw new Error(msg)
+    }
+    return userFile
+  }
+
+  _getSiteMap() {
+    const files = Array.from(this._files)
+    const commands = Array.from(this._commands)
+
+    return files
+      .map(file => {
+        return commands
+          .map(command => {
+            const link = `${command}?file=${file}`
+            return `<a href="${link}">${link}</a>`
+          })
+          .join("<br>")
+      })
+      .join("<br>")
   }
 
   _initApp() {
@@ -41,25 +60,32 @@ class ServerApp {
     app.use(bodyParser.json())
     app.cwd = this.getCwd()
 
-    app.get("/get", (req, res) => {
-      this._handleXsvRequest(req, res)
+    app.get("/sample", (req, res) => {
+      const fileName = this._checkAndGetFileName(req, res)
+      const amount = req.query.howMany
+      if (amount.match(/[^\d]/)) {
+        return res.send("bad amount")
+      }
+      this._pipeCommand(`xsv sample ${amount} ${fileName}`, res)
     })
 
-    app.get("/", (req, res) => {
-      const files = Array.from(this._files)
-      const commands = Array.from(this._commands)
-      const links = files
-        .map(file => {
-          return commands
-            .map(command => {
-              const link = `get?file=${file}&command=${command}`
-              return `<a href="${link}">${link}</a>`
-            })
-            .join("<br>")
-        })
-        .join("<br>")
-      res.send(links)
+    app.get("/search", (req, res) => {
+      const fileName = this._checkAndGetFileName(req, res)
+      const query = req.query.query
+      if (query.match(/[^\d\w]/)) {
+        return res.send("bad query")
+      }
+      this._pipeCommand(`xsv search ${query} ${fileName}`, res)
     })
+
+    Array.from(this._commands).forEach(command => {
+      app.get(`/${command}`, (req, res) => {
+        const fileName = this._checkAndGetFileName(req, res)
+        this._pipeCommand(`xsv ${command} ${fileName}`, res)
+      })
+    })
+
+    app.get("/", (req, res) => res.send(this._getSiteMap()))
 
     return app
   }
