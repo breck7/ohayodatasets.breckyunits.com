@@ -3,6 +3,7 @@
 const express = require("express")
 const bodyParser = require("body-parser")
 const exec = require("child_process").exec
+const fs = require("fs")
 
 class ServerApp {
   constructor(port = 7654, cwd = process.cwd(), hostname = "localhost", protocol = "http") {
@@ -10,8 +11,21 @@ class ServerApp {
     this._port = port
     this._hostname = hostname
     this._protocol = protocol
-    this._files = new Set("baby-names.csv gutenberg.tsv".split(" "))
+    this._directories = ["misc", "owid"]
     this._commands = new Set("headers frequency count stats".split(" "))
+    this._scanForFiles()
+  }
+
+  _scanForFiles() {
+    const allFiles = new Set()
+
+    this._directories.forEach(dir => {
+      const files = fs.readdirSync(dir).filter(file => file !== ".DS_Store")
+      files.forEach(filename => {
+        allFiles.add(dir + "/" + filename)
+      })
+    })
+    this._files = allFiles
   }
 
   getCwd() {
@@ -56,6 +70,12 @@ class ServerApp {
 
   _initApp() {
     const app = express()
+    app.use((req, res, next) => {
+      res.header("Access-Control-Allow-Origin", "*")
+      res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept")
+      next()
+    })
+
     this._app = app
     app.use(bodyParser.urlencoded({ extended: false }))
     app.use(bodyParser.json())
@@ -77,6 +97,15 @@ class ServerApp {
         return res.send("bad query")
       }
       this._pipeCommand(`xsv search ${query} ${fileName}`, res)
+    })
+
+    this._directories.forEach(dir => {
+      app.use(
+        `/${dir}`,
+        express.static(__dirname + "/" + dir, {
+          maxAge: 31557600000
+        })
+      )
     })
 
     Array.from(this._commands).forEach(command => {

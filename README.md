@@ -30,6 +30,7 @@ This project will turn CSVs into simple read-only web services via wrapping the 
     cd
     cd datasets
     npm install .
+    tmux
     ./app.js
 
 
